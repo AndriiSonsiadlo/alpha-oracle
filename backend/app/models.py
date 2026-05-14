@@ -61,3 +61,41 @@ class AgentDecision(BaseModel):
     strategy_version_id: Optional[str] = None
     tx_hash: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Portfolio
+# ---------------------------------------------------------------------------
+
+class Position(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    market_id: str
+    market_question: str = ""
+    side: str = "yes"  # "yes" or "no"
+    entry_price: float = 0.0
+    current_price: float = 0.0
+    amount_usdc: float = 0.0
+    shares: float = 0.0
+    unrealized_pnl: float = 0.0
+    status: str = "open"  # "open" or "closed"
+    opened_at: datetime = Field(default_factory=datetime.utcnow)
+    closed_at: Optional[datetime] = None
+
+
+class PortfolioSummary(BaseModel):
+    total_value: float = 0.0
+    cash_balance: float = 0.0
+    positions_value: float = 0.0
+    total_pnl: float = 0.0
+    total_pnl_pct: float = 0.0
+    open_positions: int = 0
+    total_trades: int = 0
+    win_rate: float = 0.0
+
+
+class MispricedMarket(BaseModel):
+    market: Market
+    analysis: MarketAnalysis
+    suggested_action: AgentAction
+    suggested_amount: float = 0.0
+    kelly_bet_fraction: float = 0.0
