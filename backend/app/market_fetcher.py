@@ -92,3 +92,39 @@ def _parse_prices(raw_prices) -> list[float]:
         except (json.JSONDecodeError, TypeError):
             return []
     return []
+
+
+GAMMA_EVENTS = "/events"
+
+
+async def fetch_market_by_id(market_id: str) -> Optional[Market]:
+    """Fetch a single market by its condition_id or slug."""
+    settings = get_settings()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"{settings.polymarket_api_url}{GAMMA_MARKETS}/{market_id}",
+            )
+            resp.raise_for_status()
+            raw = resp.json()
+
+        outcome_prices = _parse_prices(raw.get("outcomePrices", ""))
+        yes_price = outcome_prices[0] if outcome_prices else 0.0
+        no_price = outcome_prices[1] if len(outcome_prices) > 1 else 1.0 - yes_price
+
+        return Market(
+            id=str(raw.get("id", raw.get("condition_id", ""))),
+            question=raw.get("question", ""),
+            description=raw.get("description", ""),
+            category=raw.get("groupItemTitle", raw.get("category", "")),
+            end_date=raw.get("endDate"),
+            yes_price=yes_price,
+            no_price=no_price,
+            volume=float(raw.get("volume", 0) or 0),
+            liquidity=float(raw.get("liquidity", 0) or 0),
+            source="polymarket",
+            fetched_at=datetime.utcnow(),
+        )
+    except Exception as exc:
+        logger.error("Failed to fetch market %s: %s", market_id, exc)
+        return None
