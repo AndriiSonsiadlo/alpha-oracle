@@ -80,10 +80,6 @@ class GroqLLMClient(LLMClient):
         return resp.choices[0].message.content or "{}"
 
 
-def get_groq_client() -> GroqLLMClient:
-    return GroqLLMClient(get_settings().groq_api_key)
-
-
 class OpenAILLMClient(LLMClient):
     provider = "openai"
 
@@ -128,3 +124,84 @@ class AnthropicLLMClient(LLMClient):
             block.text for block in resp.content if getattr(block, "type", "") == "text"
         )
         return "{" + text
+
+
+class GoogleLLMClient(LLMClient):
+    provider = "google"
+
+    def __init__(self, api_key: str):
+        from google import genai
+        self._client = genai.Client(api_key=api_key)
+
+    async def _complete_text(self, system, user, model, *, temperature, max_tokens):
+        from google.genai import types
+        resp = await self._client.aio.models.generate_content(
+            model=model,
+            contents=user,
+            config=types.GenerateContentConfig(
+                system_instruction=system,
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+                response_mime_type="application/json",
+            ),
+        )
+        return resp.text or "{}"
+
+
+# ---------------------------------------------------------------------------
+# Provider selection
+# ---------------------------------------------------------------------------
+
+from functools import lru_cache
+
+MODEL_PROVIDERS: dict[str, str] = {
+    "llama-3.3-70b-versatile": "groq",
+    "llama-3.1-8b-instant": "groq",
+    "openai/gpt-oss-20b": "groq",
+    "gemini-2.0-flash": "google",
+    "gemini-1.5-flash": "google",
+    "gpt-4o": "openai",
+    "gpt-4o-mini": "openai",
+    "gpt-4-turbo": "openai",
+    "gpt-5-mini": "openai",
+    "gpt-5.4-nano": "openai",
+    "claude-opus-4-8": "anthropic",
+    "claude-sonnet-4-6": "anthropic",
+    "claude-haiku-4-5": "anthropic",
+}
+
+_CLIENT_FACTORIES = {
+    "groq": lambda s: GroqLLMClient(s.groq_api_key),
+    "openai": lambda s: OpenAILLMClient(s.openai_api_key),
+    "anthropic": lambda s: AnthropicLLMClient(s.anthropic_api_key),
+    "google": lambda s: GoogleLLMClient(s.google_api_key),
+}
+
+
+def resolve_provider(model: str, override: Optional[str] = None) -> str:
+    if override and override.lower() != "auto":
+        return override.lower()
+    if model in MODEL_PROVIDERS:
+        return MODEL_PROVIDERS[model]
+    m = (model or "").lower()
+    if "gpt-oss" in m:
+        return "groq"
+    if m.startswith("claude"):
+        return "anthropic"
+    if m.startswith("gemini"):
+        return "google"
+    if m.startswith(("gpt", "o1", "o3", "o4", "chatgpt")):
+        return "openai"
+    return "groq"
+
+
+@lru_cache(maxsize=None)
+def get_llm_client(provider: str) -> LLMClient:
+    factory = _CLIENT_FACTORIES.get(provider)
+    if not factory:
+        raise ValueError(f"Unknown LLM provider: {provider!r}")
+    return factory(get_settings())
+
+
+def get_client_for_model(model: str, override: Optional[str] = None) -> LLMClient:
+    return get_llm_client(resolve_provider(model, override))
