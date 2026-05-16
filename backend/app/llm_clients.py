@@ -82,3 +82,49 @@ class GroqLLMClient(LLMClient):
 
 def get_groq_client() -> GroqLLMClient:
     return GroqLLMClient(get_settings().groq_api_key)
+
+
+class OpenAILLMClient(LLMClient):
+    provider = "openai"
+
+    def __init__(self, api_key: str):
+        from openai import AsyncOpenAI
+        self._client = AsyncOpenAI(api_key=api_key)
+
+    async def _complete_text(self, system, user, model, *, temperature, max_tokens):
+        resp = await self._client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+        )
+        return resp.choices[0].message.content or "{}"
+
+
+class AnthropicLLMClient(LLMClient):
+    provider = "anthropic"
+
+    def __init__(self, api_key: str):
+        from anthropic import AsyncAnthropic
+        self._client = AsyncAnthropic(api_key=api_key)
+
+    async def _complete_text(self, system, user, model, *, temperature, max_tokens):
+        # Claude has no JSON response_format. Prefill "{" to force JSON output.
+        resp = await self._client.messages.create(
+            model=model,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[
+                {"role": "user", "content": user},
+                {"role": "assistant", "content": "{"},
+            ],
+        )
+        text = "".join(
+            block.text for block in resp.content if getattr(block, "type", "") == "text"
+        )
+        return "{" + text
