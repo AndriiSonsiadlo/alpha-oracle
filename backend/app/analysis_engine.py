@@ -104,3 +104,39 @@ async def analyze_market(
             news_summary="",
             analyzed_at=datetime.utcnow(),
         )
+
+
+async def analyze_markets_batch(
+    markets: list[Market],
+    model: str = DEFAULT_MODEL,
+    provider: Optional[str] = None,
+    max_concurrent: int = 1,
+) -> list[MarketAnalysis]:
+    """Analyze multiple markets with concurrency control."""
+    import asyncio
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def _limited(m: Market) -> MarketAnalysis:
+        async with semaphore:
+            await asyncio.sleep(5)  # respect provider rate limits
+            return await analyze_market(m, model=model, provider=provider)
+
+    tasks = [_limited(m) for m in markets]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    analyses: list[MarketAnalysis] = []
+    for i, r in enumerate(results):
+        if isinstance(r, Exception):
+            logger.error("Batch analysis error for market %s: %s", markets[i].id, r)
+            analyses.append(
+                MarketAnalysis(
+                    market_id=markets[i].id,
+                    ai_probability=markets[i].yes_price,
+                    confidence=0.0,
+                    edge=0.0,
+                    reasoning=f"Error: {r}",
+                )
+            )
+        else:
+            analyses.append(r)
+    return analyses
