@@ -10,6 +10,10 @@ from app.models import (
     MarketAnalysis,
     Position,
     PortfolioSummary,
+    StrategyConfig,
+    StrategyDiff,
+    StrategyVersion,
+    StrategyVersionStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -113,3 +117,94 @@ class Store:
             total_trades=total_trades,
             win_rate=round(win_rate, 4),
         )
+
+
+# Add missing imports at top handled below via python
+
+    # ------------------------------------------------------------------
+    # Strategy versioning ("git for agents")
+    # ------------------------------------------------------------------
+
+    def __init_strategies(self):
+        if not hasattr(self, '_strategy_versions'):
+            self._strategy_versions: list[StrategyVersion] = []
+            default = StrategyVersion(
+                version_label="v1.0",
+                config=StrategyConfig(),
+                status=StrategyVersionStatus.ACTIVE,
+                description="Initial default strategy",
+            )
+            self._strategy_versions.append(default)
+
+    async def get_active_strategy(self) -> StrategyVersion:
+        self.__init_strategies()
+        for sv in reversed(self._strategy_versions):
+            if sv.status == StrategyVersionStatus.ACTIVE:
+                return sv
+        return self._strategy_versions[-1]
+
+    async def get_strategy_versions(self) -> list[StrategyVersion]:
+        self.__init_strategies()
+        return list(self._strategy_versions)
+
+    async def get_strategy_version(self, version_id: str) -> Optional[StrategyVersion]:
+        self.__init_strategies()
+        for sv in self._strategy_versions:
+            if sv.id == version_id:
+                return sv
+        return None
+
+    async def create_strategy_version(
+        self,
+        config: StrategyConfig,
+        description: str = "",
+        parent_id: Optional[str] = None,
+        label: Optional[str] = None,
+    ) -> StrategyVersion:
+        self.__init_strategies()
+        for sv in self._strategy_versions:
+            if sv.status == StrategyVersionStatus.ACTIVE:
+                sv.status = StrategyVersionStatus.ARCHIVED
+
+        version_num = len(self._strategy_versions) + 1
+        new_version = StrategyVersion(
+            version_label=label or f"v{version_num}.0",
+            parent_id=parent_id or (self._strategy_versions[-1].id if self._strategy_versions else None),
+            config=config,
+            status=StrategyVersionStatus.ACTIVE,
+            description=description,
+        )
+        self._strategy_versions.append(new_version)
+        return new_version
+
+    async def rollback_strategy(self, version_id: str) -> Optional[StrategyVersion]:
+        self.__init_strategies()
+        target = await self.get_strategy_version(version_id)
+        if not target:
+            return None
+        for sv in self._strategy_versions:
+            if sv.status == StrategyVersionStatus.ACTIVE:
+                sv.status = StrategyVersionStatus.ARCHIVED
+        rolled_back = StrategyVersion(
+            version_label=f"{target.version_label}-rollback",
+            parent_id=target.id,
+            config=target.config.model_copy(),
+            status=StrategyVersionStatus.ACTIVE,
+            description=f"Rolled back to {target.version_label}",
+        )
+        self._strategy_versions.append(rolled_back)
+        return rolled_back
+
+    async def diff_strategies(self, version_a_id: str, version_b_id: str) -> StrategyDiff:
+        a = await self.get_strategy_version(version_a_id)
+        b = await self.get_strategy_version(version_b_id)
+        changes: list[dict] = []
+        if a and b:
+            a_dict = a.config.model_dump()
+            b_dict = b.config.model_dump()
+            for key in set(list(a_dict.keys()) + list(b_dict.keys())):
+                val_a = a_dict.get(key)
+                val_b = b_dict.get(key)
+                if val_a != val_b:
+                    changes.append({"field": key, "old": val_a, "new": val_b})
+        return StrategyDiff(version_a_id=version_a_id, version_b_id=version_b_id, changes=changes)
