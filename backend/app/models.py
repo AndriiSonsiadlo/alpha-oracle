@@ -99,3 +99,49 @@ class MispricedMarket(BaseModel):
     suggested_action: AgentAction
     suggested_amount: float = 0.0
     kelly_bet_fraction: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Strategy versioning ("git for agents")
+# ---------------------------------------------------------------------------
+
+class StrategyVersionStatus(str, Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+    EXPERIMENTAL = "experimental"
+
+
+class StrategyConfig(BaseModel):
+    kelly_fraction: float = 0.25
+    max_bet_pct: float = 0.10
+    min_edge: float = 0.05
+    min_confidence: float = 0.6
+    categories: list[str] = Field(default_factory=list)
+    model_name: str = "llama-3.1-8b-instant"
+    provider: str = "auto"
+    prompt_template: str = "default"
+
+
+class StrategyVersion(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    version_label: str = ""
+    parent_id: Optional[str] = None
+    config: StrategyConfig = Field(default_factory=StrategyConfig)
+    status: StrategyVersionStatus = StrategyVersionStatus.ACTIVE
+    description: str = ""
+    performance_snapshot: dict = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class StrategyDiff(BaseModel):
+    version_a_id: str
+    version_b_id: str
+    changes: list[dict] = Field(default_factory=list)
+
+
+class DashboardStats(BaseModel):
+    portfolio: PortfolioSummary
+    active_markets_count: int = 0
+    mispriced_count: int = 0
+    decisions_today: int = 0
+    current_strategy: Optional[StrategyVersion] = None
