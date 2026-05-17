@@ -90,7 +90,12 @@ class Agent:
 
         analysis_map = {a.market_id: a for a in analyses}
 
-        # 3. Find new mispriced opportunities
+        # 3. Review existing positions
+        market_map = {m.id: m for m in markets}
+        position_decisions = await self._review_positions(market_map, analysis_map)
+        decisions.extend(position_decisions)
+
+        # 4. Find new mispriced opportunities
         mispriced = self._find_mispriced(markets, analyses)
         decisions: list[AgentDecision] = []
         for mp in mispriced:
@@ -148,6 +153,97 @@ class Agent:
             market_probability=mp.market.yes_price,
             edge=mp.analysis.edge, confidence=mp.analysis.confidence,
             created_at=datetime.utcnow(),
+        )
+
+
+    # ------------------------------------------------------------------
+    # Position review — SELL / HOLD
+    # ------------------------------------------------------------------
+
+    async def _review_positions(
+        self,
+        market_map: dict,
+        analysis_map: dict,
+    ) -> list[AgentDecision]:
+        open_positions = await self.store.get_positions("open")
+        decisions: list[AgentDecision] = []
+        for pos in open_positions:
+            market = market_map.get(pos.market_id)
+            analysis = analysis_map.get(pos.market_id)
+            if not market or not analysis:
+                decisions.append(self._hold_decision(pos, "Market not in current feed"))
+                continue
+
+            current_price = market.yes_price if pos.side == "yes" else (1 - market.yes_price)
+            pos.current_price = current_price
+            pos.unrealized_pnl = (current_price - pos.entry_price) * pos.shares
+
+            edge_for_side = analysis.edge if pos.side == "yes" else -analysis.edge
+            profit_pct = pos.unrealized_pnl / max(pos.amount_usdc, 0.01)
+
+            should_sell = False
+            reason = ""
+            if edge_for_side < 0:
+                should_sell = True
+                reason = f"Edge reversed (edge={edge_for_side:+.1%})"
+            elif analysis.confidence < self.config.min_confidence * 0.8:
+                should_sell = True
+                reason = f"Confidence dropped to {analysis.confidence:.0%}"
+            elif profit_pct > 0.20:
+                should_sell = True
+                reason = f"Taking profit: {profit_pct:.0%} return"
+            elif profit_pct < -0.30:
+                should_sell = True
+                reason = f"Stop loss: {profit_pct:.0%} loss"
+
+            if should_sell:
+                decision = await self._make_sell_decision(pos, market, analysis, reason)
+                decisions.append(decision)
+            else:
+                hold_reason = (
+                    f"Edge still favorable ({edge_for_side:+.1%}), "
+                    f"confidence {analysis.confidence:.0%}, P&L {profit_pct:+.0%}"
+                )
+                decisions.append(self._hold_decision(pos, hold_reason))
+
+            await self.store.save_position(pos)
+        return decisions
+
+    async def _make_sell_decision(self, pos, market, analysis, reason: str) -> AgentDecision:
+        current_price = pos.current_price
+        proceeds = pos.shares * current_price
+        pnl = proceeds - pos.amount_usdc
+        pos.status = "closed"
+        pos.closed_at = datetime.utcnow()
+        pos.unrealized_pnl = pnl
+        await self.store.save_position(pos)
+        self.store._cash_balance += proceeds
+        return AgentDecision(
+            market_id=pos.market_id, market_question=pos.market_question,
+            action=AgentAction.SELL, amount_usdc=round(proceeds, 2),
+            reasoning_trace=(
+                f"## SELL: '{pos.market_question}'\n\n"
+                f"**Trigger:** {reason}\n"
+                f"**Entry:** ${pos.entry_price:.4f} | **Exit:** ${current_price:.4f}\n"
+                f"**P&L:** ${pnl:+.2f}"
+            ),
+            ai_probability=analysis.ai_probability,
+            market_probability=market.yes_price,
+            edge=analysis.edge, confidence=analysis.confidence,
+            created_at=datetime.utcnow(),
+        )
+
+    def _hold_decision(self, pos, reason: str) -> AgentDecision:
+        return AgentDecision(
+            market_id=pos.market_id, market_question=pos.market_question,
+            action=AgentAction.HOLD, amount_usdc=pos.amount_usdc,
+            reasoning_trace=(
+                f"## HOLD: '{pos.market_question}'\n\n"
+                f"**Position:** {pos.side.upper()} | Entry: ${pos.entry_price:.4f}\n"
+                f"**Reason:** {reason}"
+            ),
+            ai_probability=0, market_probability=pos.current_price,
+            edge=0, confidence=0, created_at=datetime.utcnow(),
         )
 
     # ------------------------------------------------------------------
