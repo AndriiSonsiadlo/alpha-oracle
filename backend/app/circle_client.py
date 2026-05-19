@@ -112,6 +112,68 @@ class CircleClient:
             return None
 
 
+    async def get_wallet_info(self, wallet_id: str) -> Optional[dict]:
+        """Get wallet details (address, state, blockchain) for a given wallet ID."""
+        if not self._enabled:
+            return None
+        try:
+            wallets_api = developer_controlled_wallets.WalletsApi(self._client)
+            response = wallets_api.get_wallet(id=wallet_id)
+            data = json.loads(response.model_dump_json())
+            return data.get("data", {}).get("wallet")
+        except Exception as exc:
+            logger.error("Failed to get wallet info %s: %s", wallet_id, exc)
+            return None
+
+    async def transfer_usdc(
+        self,
+        from_wallet_id: str,
+        to_address: str,
+        amount: str,
+        blockchain: str = "ARC-TESTNET",
+    ) -> Optional[dict]:
+        """Transfer USDC from agent wallet to a destination address."""
+        if not self._enabled:
+            tx_hash = f"0x{uuid.uuid4().hex}"
+            logger.info("Mock USDC transfer: %s USDC → %s (tx: %s)", amount, to_address, tx_hash)
+            return {"id": str(uuid.uuid4()), "state": "COMPLETE", "txHash": tx_hash, "amount": amount}
+
+        import time
+        try:
+            transactions_api = developer_controlled_wallets.TransactionsApi(self._client)
+            ARC_TESTNET_USDC = "0x3600000000000000000000000000000000000000"
+            request = developer_controlled_wallets.CreateTransferTransactionForDeveloperRequest.from_dict({
+                "walletId": from_wallet_id,
+                "blockchain": blockchain,
+                "destinationAddress": to_address,
+                "tokenAddress": ARC_TESTNET_USDC,
+                "amounts": [amount],
+                "feeLevel": "MEDIUM",
+            })
+            transfer_response = transactions_api.create_developer_transaction_transfer(request)
+            transfer_data = transfer_response.data.to_dict()
+            transaction_id = transfer_data["id"]
+            current_state = transfer_data["state"]
+            terminal_states = {"COMPLETE", "FAILED", "CANCELLED", "DENIED"}
+            while current_state not in terminal_states:
+                time.sleep(3)
+                poll_response = transactions_api.get_transaction(id=transaction_id)
+                current_state = poll_response.data.to_dict()["transaction"]["state"]
+            if current_state != "COMPLETE":
+                raise RuntimeError(f"Transaction ended in state: {current_state}")
+            return transfer_data
+        except Exception as exc:
+            logger.error("Transfer failed: %s", exc)
+            return None
+
+    def _usdc_token_id(self, blockchain: str) -> str:
+        token_map = {
+            "ARC-TESTNET": "arc-testnet-usdc-token-id",
+            "ETH-SEPOLIA": "36b6931a-873a-56a8-8a27-b706b17104ee",
+        }
+        return token_map.get(blockchain, "arc-testnet-usdc-token-id")
+
+
 _circle_client: Optional[CircleClient] = None
 
 
