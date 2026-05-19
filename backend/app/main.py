@@ -176,3 +176,44 @@ async def list_positions(status: str = Query("open")):
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "agent_config": agent.config.model_dump(), "bankroll": store._cash_balance}
+
+
+# ---------------------------------------------------------------------------
+# Strategy versioning
+# ---------------------------------------------------------------------------
+
+@app.get("/api/strategies", response_model=list[StrategyVersion])
+async def list_strategies():
+    return await store.get_strategy_versions()
+
+
+@app.get("/api/strategies/active", response_model=StrategyVersion)
+async def get_active_strategy():
+    return await store.get_active_strategy()
+
+
+@app.post("/api/strategies", response_model=StrategyVersion)
+async def create_strategy(
+    config: StrategyConfig,
+    description: str = "",
+    label: Optional[str] = None,
+):
+    new_version = await store.create_strategy_version(
+        config=config, description=description, label=label,
+    )
+    agent.update_config(config)
+    return new_version
+
+
+@app.post("/api/strategies/{version_id}/rollback", response_model=StrategyVersion)
+async def rollback_strategy(version_id: str):
+    rolled_back = await store.rollback_strategy(version_id)
+    if not rolled_back:
+        raise HTTPException(404, "Strategy version not found")
+    agent.update_config(rolled_back.config)
+    return rolled_back
+
+
+@app.get("/api/strategies/diff")
+async def diff_strategies(a: str, b: str):
+    return await store.diff_strategies(a, b)
