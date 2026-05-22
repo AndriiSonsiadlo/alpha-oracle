@@ -145,3 +145,12 @@ class DashboardStats(BaseModel):
     mispriced_count: int = 0
     decisions_today: int = 0
     current_strategy: Optional[StrategyVersion] = None
+
+
+class EquityPoint(BaseModel):
+    """One snapshot of total portfolio value at a point in time."""
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    total_value: float = 0.0
+    cash_balance: float = 0.0
+    positions_value: float = 0.0
+    total_pnl: float = 0.0
