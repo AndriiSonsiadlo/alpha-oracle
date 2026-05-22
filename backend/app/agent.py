@@ -32,7 +32,34 @@ class Agent:
         settings = get_settings()
         self.config = config or StrategyConfig(kelly_fraction=settings.kelly_fraction)
         self.bankroll = settings.default_bankroll
+        self.wallet_id = None
+        self.wallet_address = None
+        self._circle = None
         self.isAnalysing = False
+
+
+    def _get_circle(self):
+        if self._circle is None:
+            from app.circle_client import get_circle_client
+            self._circle = get_circle_client()
+        return self._circle
+
+    def set_wallet(self, wallet_id: str, wallet_address: str = "") -> None:
+        self.wallet_id = wallet_id
+        self.wallet_address = wallet_address
+        logger.info("Agent wallet set: %s (%s)", wallet_id, wallet_address or "address unknown")
+
+    async def sync_bankroll_from_wallet(self) -> Optional[float]:
+        if not self.wallet_id:
+            return None
+        cc = self._get_circle()
+        balance_info = await cc.get_wallet_balance(self.wallet_id)
+        if not balance_info:
+            return None
+        usdc_balance = cc.get_usdc_amount(balance_info)
+        self.store._cash_balance = usdc_balance
+        logger.info("Synced bankroll from wallet %s: $%.2f USDC", self.wallet_id, usdc_balance)
+        return usdc_balance
 
     # ------------------------------------------------------------------
     # Main loop
@@ -111,6 +138,7 @@ class Agent:
             await self.store.save_analyses(good_fresh)
         await self.store.save_decisions(decisions)
 
+        await self.store.record_equity_snapshot()
         self.isAnalysing = False
         return decisions
 
