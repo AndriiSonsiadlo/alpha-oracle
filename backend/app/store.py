@@ -6,6 +6,7 @@ from typing import Optional
 
 from app.models import (
     AgentDecision,
+    EquityPoint,
     Market,
     MarketAnalysis,
     Position,
@@ -29,6 +30,8 @@ class Store:
         self._positions: dict[str, Position] = {}
         self._initial_bankroll: float = 1000.0
         self._cash_balance: float = 1000.0
+        self._equity_curve: list[EquityPoint] = []
+        self.reset_equity_curve()
 
     # ------------------------------------------------------------------
     # Markets
@@ -120,6 +123,39 @@ class Store:
 
 
 # Add missing imports at top handled below via python
+
+
+    # ------------------------------------------------------------------
+    # Equity curve
+    # ------------------------------------------------------------------
+
+    async def record_equity_snapshot(self) -> EquityPoint:
+        summary = await self.get_portfolio_summary()
+        point = EquityPoint(
+            timestamp=datetime.now(timezone.utc),
+            total_value=summary.total_value,
+            cash_balance=summary.cash_balance,
+            positions_value=summary.positions_value,
+            total_pnl=summary.total_pnl,
+        )
+        self._equity_curve.append(point)
+        if len(self._equity_curve) > 500:
+            self._equity_curve = self._equity_curve[-500:]
+        return point
+
+    def reset_equity_curve(self) -> None:
+        self._equity_curve = [
+            EquityPoint(
+                timestamp=datetime.now(timezone.utc),
+                total_value=round(self._cash_balance, 2),
+                cash_balance=round(self._cash_balance, 2),
+                positions_value=0.0,
+                total_pnl=0.0,
+            )
+        ]
+
+    async def get_equity_curve(self, limit: int = 500) -> list[EquityPoint]:
+        return self._equity_curve[-limit:]
 
     # ------------------------------------------------------------------
     # Strategy versioning ("git for agents")
