@@ -217,3 +217,117 @@ async def rollback_strategy(version_id: str):
 @app.get("/api/strategies/diff")
 async def diff_strategies(a: str, b: str):
     return await store.diff_strategies(a, b)
+
+
+# ---------------------------------------------------------------------------
+# Circle / Arc wallet endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/api/wallet/setup")
+async def setup_wallet():
+    from app.circle_client import get_circle_client
+    cc = get_circle_client()
+    ws = await cc.create_wallet_set("AlphaOracle Agent")
+    if not ws:
+        raise HTTPException(500, "Failed to create wallet set")
+    wallets = await cc.create_wallet(ws["id"])
+    if not wallets:
+        raise HTTPException(500, "Failed to create wallet")
+    wallet_id = wallets[0].get("id", "")
+    wallet_address = wallets[0].get("address", "")
+    if wallet_id:
+        agent.set_wallet(wallet_id, wallet_address)
+        await agent.sync_bankroll_from_wallet()
+    return {"wallet_set": ws, "wallets": wallets, "circle_enabled": cc.enabled}
+
+
+@app.post("/api/wallet/connect")
+async def connect_wallet(wallet_id: str):
+    from app.circle_client import get_circle_client
+    cc = get_circle_client()
+    if not cc.enabled:
+        raise HTTPException(400, "Circle API key not configured")
+    wallet_info = await cc.get_wallet_info(wallet_id)
+    if not wallet_info:
+        raise HTTPException(404, f"Wallet '{wallet_id}' not found")
+    balance_info = await cc.get_wallet_balance(wallet_id)
+    usdc_balance = cc.get_usdc_amount(balance_info) if balance_info else 0.0
+    agent.set_wallet(wallet_id, wallet_info.get("address", ""))
+    store._cash_balance = usdc_balance
+    store._initial_bankroll = usdc_balance
+    store.reset_equity_curve()
+    return {
+        "wallet_id": wallet_id, "address": wallet_info.get("address", ""),
+        "blockchain": wallet_info.get("blockchain", "ARC-TESTNET"),
+        "balance_usdc": usdc_balance, "circle_enabled": cc.enabled,
+    }
+
+
+@app.post("/api/wallet/sync-balance")
+async def sync_wallet_balance():
+    from app.circle_client import get_circle_client
+    cc = get_circle_client()
+    if not agent.wallet_id:
+        raise HTTPException(400, "No wallet connected")
+    balance_info = await cc.get_wallet_balance(agent.wallet_id)
+    if not balance_info:
+        raise HTTPException(500, "Failed to fetch balance")
+    usdc_balance = cc.get_usdc_amount(balance_info)
+    store._cash_balance = usdc_balance
+    if usdc_balance > 0:
+        store._initial_bankroll = usdc_balance
+    await store.record_equity_snapshot()
+    return {"wallet_id": agent.wallet_id, "balance_usdc": usdc_balance, "bankroll_updated": True}
+
+
+@app.get("/api/wallet/status")
+async def wallet_status():
+    from app.circle_client import get_circle_client
+    cc = get_circle_client()
+    if not agent.wallet_id:
+        return {"connected": False, "wallet_id": None, "balance_usdc": None,
+                "bankroll": store._cash_balance, "circle_enabled": cc.enabled}
+    balance_info = await cc.get_wallet_balance(agent.wallet_id)
+    usdc_balance = cc.get_usdc_amount(balance_info) if balance_info else None
+    return {"connected": True, "wallet_id": agent.wallet_id, "address": agent.wallet_address,
+            "balance_usdc": usdc_balance, "bankroll": store._cash_balance, "circle_enabled": cc.enabled}
+
+
+@app.get("/api/portfolio/history")
+async def get_portfolio_history(limit: int = Query(500, le=500)):
+    return await store.get_equity_curve(limit=limit)
+
+
+# ---------------------------------------------------------------------------
+# Session / mode management
+# ---------------------------------------------------------------------------
+
+@app.post("/api/session/reset")
+async def reset_session(mode: str = "demo"):
+    settings = get_settings()
+    store._markets.clear()
+    store._analyses.clear()
+    store._decisions.clear()
+    store._positions.clear()
+    if mode == "demo":
+        store._cash_balance = settings.default_bankroll
+        store._initial_bankroll = settings.default_bankroll
+        agent.wallet_id = None
+        agent.wallet_address = None
+    else:
+        store._cash_balance = 0.0
+        store._initial_bankroll = 0.0
+    store.reset_equity_curve()
+    return {"mode": mode, "bankroll": store._cash_balance, "status": "reset"}
+
+
+# Update health to include wallet info
+@app.get("/api/health")
+async def health_full():
+    from app.circle_client import get_circle_client
+    cc = get_circle_client()
+    return {
+        "status": "ok", "agent_config": agent.config.model_dump(),
+        "circle_enabled": cc.enabled, "wallet_connected": agent.wallet_id is not None,
+        "wallet_id": agent.wallet_id, "bankroll": store._cash_balance,
+    }
