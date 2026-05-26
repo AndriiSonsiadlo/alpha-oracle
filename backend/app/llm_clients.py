@@ -156,7 +156,10 @@ from functools import lru_cache
 
 MODEL_PROVIDERS: dict[str, str] = {
     "llama-3.3-70b-versatile": "groq",
+    "llama-3.1-70b-versatile": "groq",
     "llama-3.1-8b-instant": "groq",
+    "mixtral-8x7b-32768": "groq",
+    "deepseek-r1-distill-llama-70b": "groq",
     "openai/gpt-oss-20b": "groq",
     "gemini-2.0-flash": "google",
     "gemini-1.5-flash": "google",
@@ -184,7 +187,7 @@ def resolve_provider(model: str, override: Optional[str] = None) -> str:
     if model in MODEL_PROVIDERS:
         return MODEL_PROVIDERS[model]
     m = (model or "").lower()
-    if "gpt-oss" in m:
+    if "gpt-oss" in m or "deepseek" in m or "mixtral" in m:
         return "groq"
     if m.startswith("claude"):
         return "anthropic"
