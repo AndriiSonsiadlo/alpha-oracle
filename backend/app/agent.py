@@ -83,6 +83,14 @@ class Agent:
             return []
         logger.info("Working with %d markets", len(markets))
 
+        # Volume filter
+        if self.config.min_volume > 0:
+            markets = [m for m in markets if m.volume >= self.config.min_volume]
+            if not markets:
+                logger.warning("All markets filtered by min_volume, skipping tick")
+                self.isAnalysing = False
+                return []
+
         # Category filter
         wanted = {c.strip().lower() for c in self.config.categories if c.strip()}
         if wanted:

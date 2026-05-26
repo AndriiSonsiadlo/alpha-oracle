@@ -116,6 +116,7 @@ class StrategyConfig(BaseModel):
     max_bet_pct: float = 0.10
     min_edge: float = 0.05
     min_confidence: float = 0.6
+    min_volume: float = 0.0
     categories: list[str] = Field(default_factory=list)
     model_name: str = "llama-3.1-8b-instant"
     provider: str = "auto"
