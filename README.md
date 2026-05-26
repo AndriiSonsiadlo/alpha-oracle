@@ -51,7 +51,7 @@ AlphaOracle treats agent strategies like code:
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph FE["Next.js Dashboard :3000"]
         direction TB
         UI1["Market scanner"]
