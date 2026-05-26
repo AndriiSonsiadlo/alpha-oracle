@@ -57,6 +57,7 @@ export interface StrategyConfig {
   max_bet_pct: number;
   min_edge: number;
   min_confidence: number;
+  min_volume: number;
   categories: string[];
   model_name: string;
   provider: string;
