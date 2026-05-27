@@ -14,6 +14,7 @@ from app.models import Market
 logger = logging.getLogger(__name__)
 
 GAMMA_MARKETS = "/markets"
+GAMMA_EVENTS = "/events"
 
 
 async def fetch_markets(
@@ -24,6 +25,7 @@ async def fetch_markets(
 ) -> list[Market]:
     """Fetch active prediction markets from Polymarket Gamma API.
 
+    Docs: https://docs.polymarket.com/#get-markets
     The Gamma API is public, no auth required.
     """
     settings = get_settings()
@@ -49,6 +51,7 @@ async def fetch_markets(
 
         for raw in data:
             try:
+                # Polymarket returns clobTokenIds + outcomePrices as JSON strings
                 outcome_prices = _parse_prices(raw.get("outcomePrices", ""))
                 yes_price = outcome_prices[0] if len(outcome_prices) > 0 else 0.0
                 no_price = outcome_prices[1] if len(outcome_prices) > 1 else 1.0 - yes_price
@@ -75,26 +78,6 @@ async def fetch_markets(
         logger.error("Polymarket API error: %s", exc)
 
     return markets
-
-
-def _parse_prices(raw_prices) -> list[float]:
-    """Parse outcomePrices which can be a JSON string like '["0.55","0.45"]'."""
-    import json
-
-    if not raw_prices:
-        return []
-    if isinstance(raw_prices, list):
-        return [float(p) for p in raw_prices]
-    if isinstance(raw_prices, str):
-        try:
-            parsed = json.loads(raw_prices)
-            return [float(p) for p in parsed]
-        except (json.JSONDecodeError, TypeError):
-            return []
-    return []
-
-
-GAMMA_EVENTS = "/events"
 
 
 async def fetch_market_by_id(market_id: str) -> Optional[Market]:
@@ -128,3 +111,20 @@ async def fetch_market_by_id(market_id: str) -> Optional[Market]:
     except Exception as exc:
         logger.error("Failed to fetch market %s: %s", market_id, exc)
         return None
+
+
+def _parse_prices(raw_prices) -> list[float]:
+    """Parse outcomePrices which can be a JSON string like '[\"0.55\",\"0.45\"]'."""
+    import json
+
+    if not raw_prices:
+        return []
+    if isinstance(raw_prices, list):
+        return [float(p) for p in raw_prices]
+    if isinstance(raw_prices, str):
+        try:
+            parsed = json.loads(raw_prices)
+            return [float(p) for p in parsed]
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return []

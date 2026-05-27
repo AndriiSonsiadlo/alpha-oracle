@@ -31,33 +31,40 @@ def kelly_bet(
     if market_price <= 0.01 or market_price >= 0.99:
         return {"side": "skip", "fraction": 0.0, "amount": 0.0, "edge": 0.0, "expected_value": 0.0}
 
+    # Determine which side to bet on
     yes_edge = ai_probability - market_price
-    no_edge = (1 - ai_probability) - (1 - market_price)
+    no_edge = (1 - ai_probability) - (1 - market_price)  # same magnitude, opposite sign
 
     if abs(yes_edge) < 0.01:
         return {"side": "skip", "fraction": 0.0, "amount": 0.0, "edge": 0.0, "expected_value": 0.0}
 
     if yes_edge > 0:
+        # Bet YES
         side = "yes"
         p = ai_probability
         price = market_price
     else:
+        # Bet NO
         side = "no"
         p = 1 - ai_probability
         price = 1 - market_price
 
+    # Net odds: if you buy at price, you get (1/price) - 1 net profit
     b = (1.0 / price) - 1.0
     q = 1.0 - p
 
+    # Kelly fraction
     f_star = (b * p - q) / b if b > 0 else 0.0
-    f_star = max(0.0, f_star)
+    f_star = max(0.0, f_star)  # never negative (don't bet if no edge)
 
+    # Apply fractional Kelly and max bet cap
     f_adjusted = f_star * kelly_fraction
     f_adjusted = min(f_adjusted, max_bet_pct)
 
     amount = bankroll * f_adjusted
     amount = round(amount, 2)
 
+    # Expected value per dollar bet
     ev = (p * (1.0 / price)) - 1.0
 
     return {
