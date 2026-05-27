@@ -26,6 +26,12 @@ class AgentAction(str, Enum):
     SKIP = "skip"
 
 
+class StrategyVersionStatus(str, Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+    EXPERIMENTAL = "experimental"
+
+
 # ---------------------------------------------------------------------------
 # Market data
 # ---------------------------------------------------------------------------
@@ -109,30 +115,25 @@ class PortfolioSummary(BaseModel):
     win_rate: float = 0.0
 
 
-class MispricedMarket(BaseModel):
-    market: Market
-    analysis: MarketAnalysis
-    suggested_action: AgentAction
-    suggested_amount: float = 0.0
-    kelly_bet_fraction: float = 0.0
+class EquityPoint(BaseModel):
+    """One snapshot of total portfolio value at a point in time. Appended every
+    agent tick (and on bankroll changes) to build a real equity curve."""
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    total_value: float = 0.0
+    cash_balance: float = 0.0
+    positions_value: float = 0.0
+    total_pnl: float = 0.0
 
 
 # ---------------------------------------------------------------------------
 # Strategy versioning ("git for agents")
 # ---------------------------------------------------------------------------
 
-class StrategyVersionStatus(str, Enum):
-    ACTIVE = "active"
-    ARCHIVED = "archived"
-    EXPERIMENTAL = "experimental"
-
-
 class StrategyConfig(BaseModel):
     kelly_fraction: float = 0.25
     max_bet_pct: float = 0.10  # max % of bankroll per bet
     min_edge: float = 0.05  # minimum edge to act
     min_confidence: float = 0.6
-    min_volume: float = 0.0
     categories: list[str] = Field(default_factory=list)  # empty = all
     model_name: str = "llama-3.1-8b-instant"
     provider: str = "auto"  # "auto" | "groq" | "openai" | "anthropic" | "google"
@@ -156,18 +157,21 @@ class StrategyDiff(BaseModel):
     changes: list[dict] = Field(default_factory=list)
 
 
+# ---------------------------------------------------------------------------
+# API responses
+# ---------------------------------------------------------------------------
+
+class MispricedMarket(BaseModel):
+    market: Market
+    analysis: MarketAnalysis
+    suggested_action: AgentAction
+    suggested_amount: float = 0.0
+    kelly_bet_fraction: float = 0.0
+
+
 class DashboardStats(BaseModel):
     portfolio: PortfolioSummary
     active_markets_count: int = 0
     mispriced_count: int = 0
     decisions_today: int = 0
     current_strategy: Optional[StrategyVersion] = None
-
-
-class EquityPoint(BaseModel):
-    """One snapshot of total portfolio value at a point in time."""
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    total_value: float = 0.0
-    cash_balance: float = 0.0
-    positions_value: float = 0.0
-    total_pnl: float = 0.0
