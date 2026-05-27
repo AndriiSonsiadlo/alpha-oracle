@@ -249,4 +249,4 @@ See `CIRCLE_SETUP.md` for the full Circle wallet creation and funding flow.
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
