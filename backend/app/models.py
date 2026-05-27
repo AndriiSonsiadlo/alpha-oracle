@@ -8,6 +8,10 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+# ---------------------------------------------------------------------------
+# Enums
+# ---------------------------------------------------------------------------
+
 class MarketStatus(str, Enum):
     ACTIVE = "active"
     CLOSED = "closed"
@@ -22,13 +26,17 @@ class AgentAction(str, Enum):
     SKIP = "skip"
 
 
+# ---------------------------------------------------------------------------
+# Market data
+# ---------------------------------------------------------------------------
+
 class Market(BaseModel):
     id: str
     question: str
     description: str = ""
     category: str = ""
     end_date: Optional[str] = None
-    yes_price: float = 0.0
+    yes_price: float = 0.0  # 0.0 – 1.0 (= market probability)
     no_price: float = 0.0
     volume: float = 0.0
     liquidity: float = 0.0
@@ -36,15 +44,23 @@ class Market(BaseModel):
     fetched_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+# ---------------------------------------------------------------------------
+# AI analysis
+# ---------------------------------------------------------------------------
+
 class MarketAnalysis(BaseModel):
     market_id: str
-    ai_probability: float
-    confidence: float
-    edge: float = 0.0
+    ai_probability: float  # 0.0 – 1.0
+    confidence: float  # 0.0 – 1.0
+    edge: float = 0.0  # ai_probability - market_probability
     reasoning: str = ""
     news_summary: str = ""
     analyzed_at: datetime = Field(default_factory=datetime.utcnow)
 
+
+# ---------------------------------------------------------------------------
+# Agent decisions
+# ---------------------------------------------------------------------------
 
 class AgentDecision(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -113,13 +129,13 @@ class StrategyVersionStatus(str, Enum):
 
 class StrategyConfig(BaseModel):
     kelly_fraction: float = 0.25
-    max_bet_pct: float = 0.10
-    min_edge: float = 0.05
+    max_bet_pct: float = 0.10  # max % of bankroll per bet
+    min_edge: float = 0.05  # minimum edge to act
     min_confidence: float = 0.6
     min_volume: float = 0.0
-    categories: list[str] = Field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)  # empty = all
     model_name: str = "llama-3.1-8b-instant"
-    provider: str = "auto"
+    provider: str = "auto"  # "auto" | "groq" | "openai" | "anthropic" | "google"
     prompt_template: str = "default"
 
 
