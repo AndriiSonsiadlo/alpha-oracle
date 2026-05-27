@@ -1,4 +1,16 @@
-"""Pluggable LLM provider clients behind one common interface."""
+"""Pluggable LLM provider clients behind one common interface.
+
+A `StrategyConfig` picks a `model_name` (and optionally a `provider`); the agent
+should not care which vendor serves it. Each provider has a different SDK call
+shape, so we wrap them in `LLMClient` subclasses exposing a single
+`complete_json` method and select the right one with `get_llm_client`.
+
+Adding a provider = subclass `LLMClient`, register it in `_CLIENT_FACTORIES`,
+and (optionally) add detection hints to `resolve_provider`.
+
+SDKs are imported lazily inside each client's `__init__`, so a provider you
+don't use doesn't need to be installed.
+"""
 
 from __future__ import annotations
 
@@ -6,12 +18,17 @@ import json
 import logging
 import re
 from abc import ABC, abstractmethod
+from functools import lru_cache
 from typing import Optional
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Interface
+# ---------------------------------------------------------------------------
 
 class LLMClient(ABC):
     """Common async interface for chat-completion providers."""
@@ -33,6 +50,7 @@ class LLMClient(ABC):
         temperature: float = 0.3,
         max_tokens: int = 1024,
     ) -> dict:
+        """Run a completion and parse the response as a JSON object."""
         raw = await self._complete_text(
             system, user, model, temperature=temperature, max_tokens=max_tokens
         )
@@ -40,6 +58,11 @@ class LLMClient(ABC):
 
 
 def _extract_json(text: str) -> dict:
+    """Best-effort extraction of a JSON object (handles ```json fences / prose).
+
+    Providers with a native JSON mode (Groq, OpenAI, Gemini) return clean JSON;
+    Anthropic does not, so this also rescues a `{...}` blob from prose output.
+    """
     if not text:
         return {}
     text = text.strip()
@@ -59,11 +82,16 @@ def _extract_json(text: str) -> dict:
     return {}
 
 
+# ---------------------------------------------------------------------------
+# Concrete clients
+# ---------------------------------------------------------------------------
+
 class GroqLLMClient(LLMClient):
     provider = "groq"
 
     def __init__(self, api_key: str):
         from groq import AsyncGroq
+
         self._client = AsyncGroq(api_key=api_key)
 
     async def _complete_text(self, system, user, model, *, temperature, max_tokens):
@@ -85,6 +113,7 @@ class OpenAILLMClient(LLMClient):
 
     def __init__(self, api_key: str):
         from openai import AsyncOpenAI
+
         self._client = AsyncOpenAI(api_key=api_key)
 
     async def _complete_text(self, system, user, model, *, temperature, max_tokens):
@@ -106,10 +135,13 @@ class AnthropicLLMClient(LLMClient):
 
     def __init__(self, api_key: str):
         from anthropic import AsyncAnthropic
+
         self._client = AsyncAnthropic(api_key=api_key)
 
     async def _complete_text(self, system, user, model, *, temperature, max_tokens):
-        # Claude has no JSON response_format. Prefill "{" to force JSON output.
+        # Claude has no JSON response_format. The system prompt asks for JSON and
+        # `_extract_json` parses it. Prefilling the assistant turn with "{" forces
+        # the reply to start as a JSON object (re-prepended below).
         resp = await self._client.messages.create(
             model=model,
             system=system,
@@ -131,10 +163,12 @@ class GoogleLLMClient(LLMClient):
 
     def __init__(self, api_key: str):
         from google import genai
+
         self._client = genai.Client(api_key=api_key)
 
     async def _complete_text(self, system, user, model, *, temperature, max_tokens):
         from google.genai import types
+
         resp = await self._client.aio.models.generate_content(
             model=model,
             contents=user,
@@ -152,14 +186,11 @@ class GoogleLLMClient(LLMClient):
 # Provider selection
 # ---------------------------------------------------------------------------
 
-from functools import lru_cache
-
+# Explicit overrides for known models whose name doesn't reveal the host.
+# Note: "openai/gpt-oss-*" is an open-weights model *served by Groq*, not OpenAI.
 MODEL_PROVIDERS: dict[str, str] = {
     "llama-3.3-70b-versatile": "groq",
-    "llama-3.1-70b-versatile": "groq",
     "llama-3.1-8b-instant": "groq",
-    "mixtral-8x7b-32768": "groq",
-    "deepseek-r1-distill-llama-70b": "groq",
     "openai/gpt-oss-20b": "groq",
     "gemini-2.0-flash": "google",
     "gemini-1.5-flash": "google",
@@ -182,13 +213,20 @@ _CLIENT_FACTORIES = {
 
 
 def resolve_provider(model: str, override: Optional[str] = None) -> str:
+    """Decide which provider serves `model`.
+
+    Priority: explicit `override` → exact model registry → name heuristics →
+    default (Groq, the project's primary host).
+    """
     if override and override.lower() != "auto":
         return override.lower()
+
     if model in MODEL_PROVIDERS:
         return MODEL_PROVIDERS[model]
+
     m = (model or "").lower()
-    if "gpt-oss" in m or "deepseek" in m or "mixtral" in m:
-        return "groq"
+    if "gpt-oss" in m:
+        return "groq"  # open-weights GPT served by Groq, despite the "gpt" name
     if m.startswith("claude"):
         return "anthropic"
     if m.startswith("gemini"):
@@ -200,11 +238,15 @@ def resolve_provider(model: str, override: Optional[str] = None) -> str:
 
 @lru_cache(maxsize=None)
 def get_llm_client(provider: str) -> LLMClient:
+    """Return a cached client for `provider`. Raises if the provider is unknown."""
     factory = _CLIENT_FACTORIES.get(provider)
     if not factory:
-        raise ValueError(f"Unknown LLM provider: {provider!r}")
+        raise ValueError(
+            f"Unknown LLM provider: {provider!r} (known: {', '.join(_CLIENT_FACTORIES)})"
+        )
     return factory(get_settings())
 
 
 def get_client_for_model(model: str, override: Optional[str] = None) -> LLMClient:
+    """Convenience: resolve the provider for a model and return its client."""
     return get_llm_client(resolve_provider(model, override))

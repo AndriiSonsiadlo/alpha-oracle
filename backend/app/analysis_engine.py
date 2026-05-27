@@ -1,7 +1,13 @@
-"""LLM-powered market analysis — estimates true probabilities for prediction markets."""
+"""LLM-powered market analysis — estimates true probabilities for prediction markets.
+
+Provider-agnostic: the actual LLM call goes through `app.llm_clients`, which
+selects Groq / OpenAI / Anthropic / Google based on the chosen model (and an
+optional explicit provider override).
+"""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Optional
@@ -23,7 +29,8 @@ Rules:
 1. Be calibrated — if you say 70%, events like this should happen ~70% of the time.
 2. Consider base rates, recent news, historical precedent, and logical reasoning.
 3. Explain your reasoning step-by-step before giving a final probability.
-4. Also rate your CONFIDENCE in your estimate (0.0-1.0).
+4. Also rate your CONFIDENCE in your estimate (0.0-1.0). Low confidence = you lack \
+   information. High confidence = you have strong evidence.
 5. Summarize the key news/data points that influenced your analysis.
 
 Respond in JSON format:
@@ -43,7 +50,7 @@ Category: {category}
 End Date: {end_date}
 Volume: ${volume:,.0f}
 
-Recent News Headlines:
+Recent News Headlines (use these to ground your estimate in current events):
 {news}
 
 Analyze this market. What is the TRUE probability of YES? Respond in JSON."""
@@ -54,13 +61,18 @@ async def analyze_market(
     model: str = DEFAULT_MODEL,
     provider: Optional[str] = None,
 ) -> MarketAnalysis:
-    """Use an LLM to estimate the true probability for a single market."""
+    """Use an LLM to estimate the true probability for a single market.
+
+    `provider` is an optional override ("groq" | "openai" | "anthropic" |
+    "google"); when None/"auto" the provider is inferred from `model`.
+    """
+    # Gather recent news to ground the estimate (best-effort, never raises).
     news_items = await fetch_news(market.question, limit=5)
     news_block = format_news_block(news_items)
 
     user_prompt = USER_PROMPT_TEMPLATE.format(
         question=market.question,
-        description=market.description[:500],
+        description=market.description[:500],  # trim long descriptions
         yes_price=market.yes_price,
         market_prob=market.yes_price,
         category=market.category,
@@ -76,7 +88,7 @@ async def analyze_market(
         )
 
         ai_prob = float(result.get("estimated_probability", market.yes_price))
-        ai_prob = max(0.01, min(0.99, ai_prob))
+        ai_prob = max(0.01, min(0.99, ai_prob))  # clamp to avoid infinities
 
         confidence = float(result.get("confidence", 0.5))
         confidence = max(0.0, min(1.0, confidence))
@@ -94,10 +106,10 @@ async def analyze_market(
         )
 
     except Exception as exc:
-        logger.error("LLM analysis failed for market %s: %s", market.id, exc)
+        logger.error("LLM analysis failed for market %s (model=%s): %s", market.id, model, exc)
         return MarketAnalysis(
             market_id=market.id,
-            ai_probability=market.yes_price,
+            ai_probability=market.yes_price,  # fallback to market price
             confidence=0.0,
             edge=0.0,
             reasoning=f"Analysis failed: {exc}",
@@ -112,13 +124,12 @@ async def analyze_markets_batch(
     provider: Optional[str] = None,
     max_concurrent: int = 1,
 ) -> list[MarketAnalysis]:
-    """Analyze multiple markets with concurrency control."""
-    import asyncio
+    """Analyze multiple markets. Uses an asyncio semaphore to limit concurrency."""
     semaphore = asyncio.Semaphore(max_concurrent)
 
     async def _limited(m: Market) -> MarketAnalysis:
         async with semaphore:
-            await asyncio.sleep(5)  # respect provider rate limits
+            await asyncio.sleep(5)  # spread calls out to respect provider rate limits
             return await analyze_market(m, model=model, provider=provider)
 
     tasks = [_limited(m) for m in markets]
