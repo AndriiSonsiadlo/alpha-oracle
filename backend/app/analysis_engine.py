@@ -12,6 +12,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
+from app.config import get_settings
 from app.llm_clients import get_client_for_model
 from app.models import Market, MarketAnalysis
 from app.news_fetcher import fetch_news, format_news_block
@@ -67,7 +68,8 @@ async def analyze_market(
     "google"); when None/"auto" the provider is inferred from `model`.
     """
     # Gather recent news to ground the estimate (best-effort, never raises).
-    news_items = await fetch_news(market.question, limit=5)
+    settings = get_settings()
+    news_items = await fetch_news(market.question, limit=settings.news_fetch_limit)
     news_block = format_news_block(news_items)
 
     user_prompt = USER_PROMPT_TEMPLATE.format(
@@ -84,7 +86,9 @@ async def analyze_market(
     try:
         client = get_client_for_model(model, provider)
         result = await client.complete_json(
-            SYSTEM_PROMPT, user_prompt, model, temperature=0.3, max_tokens=1024
+            SYSTEM_PROMPT, user_prompt, model,
+            temperature=settings.llm_temperature,
+            max_tokens=settings.llm_max_tokens,
         )
 
         ai_prob = float(result.get("estimated_probability", market.yes_price))
@@ -122,14 +126,18 @@ async def analyze_markets_batch(
     markets: list[Market],
     model: str = DEFAULT_MODEL,
     provider: Optional[str] = None,
-    max_concurrent: int = 1,
+    max_concurrent: Optional[int] = None,
+    rate_limit_sleep: Optional[float] = None,
 ) -> list[MarketAnalysis]:
     """Analyze multiple markets. Uses an asyncio semaphore to limit concurrency."""
-    semaphore = asyncio.Semaphore(max_concurrent)
+    settings = get_settings()
+    concurrency = max_concurrent if max_concurrent is not None else settings.llm_max_concurrent
+    sleep_secs = rate_limit_sleep if rate_limit_sleep is not None else settings.llm_rate_limit_sleep
+    semaphore = asyncio.Semaphore(concurrency)
 
     async def _limited(m: Market) -> MarketAnalysis:
         async with semaphore:
-            await asyncio.sleep(5)  # spread calls out to respect provider rate limits
+            await asyncio.sleep(sleep_secs)
             return await analyze_market(m, model=model, provider=provider)
 
     tasks = [_limited(m) for m in markets]

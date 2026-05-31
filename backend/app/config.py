@@ -22,6 +22,21 @@ class Settings(BaseSettings):
     default_bankroll: float = 1000.0
     kelly_fraction: float = 0.25  # fractional Kelly (conservative)
 
+    # LLM analysis — market fetching
+    llm_markets_limit: int = 10        # markets fetched from Polymarket API per tick
+    llm_cache_fallback_limit: int = 20 # markets pulled from cache when API fails
+
+    # LLM analysis — rate limiting
+    llm_max_concurrent: int = 1        # parallel LLM calls (keep 1 to avoid rate limits)
+    llm_rate_limit_sleep: float = 5.0  # seconds between calls when concurrency=1
+
+    # LLM analysis — generation params
+    llm_max_tokens: int = 1024         # max tokens per LLM completion
+    llm_temperature: float = 0.3       # sampling temperature for analysis
+
+    # News fetch
+    news_fetch_limit: int = 5          # news items fetched per market for context
+
     # Polymarket
     polymarket_api_url: str = "https://gamma-api.polymarket.com"
 

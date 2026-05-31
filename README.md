@@ -2,7 +2,7 @@
 
 > AI-powered prediction market intelligence agent that finds mispriced bets and trades autonomously on Arc with USDC.
 
-Built for the **Agora Agents Hackathon** (Canteen × Circle × Arc, 2026).
+Built for the **[Agora Agents Hackathon](https://agora.thecanteenapp.com/)** (Canteen × Circle × Arc, 2026).
 
 ![AlphaOracle](https://img.shields.io/badge/status-hackathon_mvp-blue)
 ![Stack](https://img.shields.io/badge/stack-Next.js_+_FastAPI_+_Arc-blueviolet)
@@ -147,7 +147,8 @@ Click **"Run Agent Tick"** in the header, or `POST /api/agent/tick`. The schedul
 also ticks automatically every `AGENT_INTERVAL_MINUTES` (default 30).
 
 > Note: analysis runs one market at a time with a short delay to respect provider
-> rate limits, so a full tick over ~10 markets takes roughly a minute.
+> rate limits. With defaults (`LLM_MARKETS_LIMIT=10`, `LLM_RATE_LIMIT_SLEEP=5`),
+> a full tick takes roughly a minute.
 
 ## Environment Variables
 
@@ -168,6 +169,13 @@ also ticks automatically every `AGENT_INTERVAL_MINUTES` (default 30).
 | `AGENT_INTERVAL_MINUTES` | No | Auto-tick interval (default: 30) |
 | `DEFAULT_BANKROLL` | No | Demo-mode paper bankroll in USDC (default: 1000) |
 | `KELLY_FRACTION` | No | Fractional Kelly multiplier (default: 0.25) |
+| `LLM_MARKETS_LIMIT` | No | Markets fetched from Polymarket per tick (default: 10) |
+| `LLM_CACHE_FALLBACK_LIMIT` | No | Markets pulled from cache when API fails (default: 20) |
+| `LLM_MAX_CONCURRENT` | No | Parallel LLM calls per tick — keep 1 to avoid rate limits (default: 1) |
+| `LLM_RATE_LIMIT_SLEEP` | No | Seconds between LLM calls when concurrency=1 (default: 5.0) |
+| `LLM_MAX_TOKENS` | No | Max tokens per LLM completion (default: 1024) |
+| `LLM_TEMPERATURE` | No | LLM sampling temperature for analysis (default: 0.3) |
+| `NEWS_FETCH_LIMIT` | No | News items fetched per market for LLM context (default: 5) |
 
 \* Required for the default code path. If every strategy you run targets a different
 provider, set that provider's key instead.

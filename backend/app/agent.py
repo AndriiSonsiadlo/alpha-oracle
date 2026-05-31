@@ -99,10 +99,11 @@ class Agent:
         logger.info("Agent tick started — config: %s", self.config.model_dump_json())
 
         # 1. Fetch markets (fall back to cached if API fails)
-        markets = await fetch_markets(limit=10, active=True)
+        settings = get_settings()
+        markets = await fetch_markets(limit=settings.llm_markets_limit, active=True)
         if not markets:
             logger.warning("API fetch failed, falling back to cached markets")
-            markets = await self.store.get_markets(limit=20)
+            markets = await self.store.get_markets(limit=settings.llm_cache_fallback_limit)
         if not markets:
             logger.warning("No markets available (API + cache empty), skipping tick")
             return []
@@ -130,7 +131,6 @@ class Agent:
                 markets,
                 model=self.config.model_name,
                 provider=self.config.provider,
-                max_concurrent=1,
             )
         except Exception as exc:
             logger.warning("LLM analysis failed (%s), will use cached analyses", exc)
@@ -219,7 +219,8 @@ class Agent:
         logger.info("Agent tick started — config: %s", self.config.model_dump_json())
 
         # 1. Fetch markets
-        markets = await fetch_markets(limit=10, active=True)
+        settings = get_settings()
+        markets = await fetch_markets(limit=settings.llm_markets_limit, active=True)
         if not markets:
             logger.warning("No markets fetched, skipping tick")
             return []
@@ -230,7 +231,6 @@ class Agent:
             markets,
             model=self.config.model_name,
             provider=self.config.provider,
-            max_concurrent=1,
         )
 
         # 3. Find mispriced opportunities
