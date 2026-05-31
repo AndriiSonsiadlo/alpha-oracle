@@ -181,7 +181,7 @@ export const api = {
     apiFetch<MispricedMarket[]>(`/api/mispriced?limit=${limit}`),
 
   // Decisions
-  getDecisions: (limit = 50) =>
+  getDecisions: (limit = 200) =>
     apiFetch<AgentDecision[]>(`/api/decisions?limit=${limit}`),
 
   // Agent

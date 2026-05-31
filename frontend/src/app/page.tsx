@@ -395,7 +395,7 @@ export default function Home() {
           <StatCard
             title="Open Positions"
             value={stats ? String(stats.portfolio.open_positions) : "0"}
-            subtitle={stats ? `Cash: ${formatUSD(cashBalance)}` : "—"}
+            subtitle={stats ? `Amount: ${formatUSD(stats.portfolio.positions_value)}` : "—"}
             icon={Target}
             trend="neutral"
           />

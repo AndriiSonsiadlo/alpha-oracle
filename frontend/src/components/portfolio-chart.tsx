@@ -115,7 +115,7 @@ export function PortfolioChart({
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={chartData}>
+            <AreaChart data={chartData} style={{ transition: "none" }}>
               <defs>
                 <linearGradient id="valueGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#6366f1" stopOpacity={0.3} />
@@ -151,6 +151,7 @@ export function PortfolioChart({
                 stroke="#6366f1"
                 strokeWidth={2}
                 fill="url(#valueGrad)"
+                isAnimationActive={true}
               />
             </AreaChart>
           </ResponsiveContainer>

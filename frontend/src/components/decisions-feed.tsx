@@ -21,7 +21,7 @@ export function DecisionsFeed({ decisions }: DecisionsFeedProps) {
           <CardTitle>Agent Activity ({decisions.length})</CardTitle>
         </div>
       </CardHeader>
-      <CardContent className="space-y-2 max-h-[600px] overflow-y-auto">
+      <CardContent className="space-y-2 max-h-[1200px] overflow-y-auto">
         {decisions.length === 0 && (
           <p className="text-sm text-muted-foreground py-4 text-center">
             No decisions yet. The agent will act on the next tick.
