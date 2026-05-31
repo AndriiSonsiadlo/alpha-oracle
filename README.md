@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/icon.svg" alt="AlphaOracle icon" width="80" />
+</p>
+
 # AlphaOracle
 
 > AI-powered prediction market intelligence agent that finds mispriced bets and trades autonomously on Arc with USDC.
@@ -7,8 +11,9 @@ Built for the **[Agora Agents Hackathon](https://agora.thecanteenapp.com/)** (Ca
 ![AlphaOracle](https://img.shields.io/badge/status-hackathon_mvp-blue)
 ![Stack](https://img.shields.io/badge/stack-Next.js_+_FastAPI_+_Arc-blueviolet)
 
-<!-- SCREENSHOT: Dashboard hero shot (full dashboard with stat cards, mispriced table, decisions feed) -->
-<!-- ![AlphaOracle dashboard](docs/screenshots/dashboard.png) -->
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="AlphaOracle dashboard" />
+</p>
 
 ## What It Does
 
@@ -33,8 +38,12 @@ On first load you pick a mode (stored in `localStorage`):
 | Setup | None | `CIRCLE_API_KEY` + a funded wallet |
 | Market data + AI | Real | Real |
 
-<!-- SCREENSHOT: Mode-select screen (Demo vs Live cards) -->
-<!-- ![Mode select](docs/screenshots/mode-select.png) -->
+<p align="center">
+  <img src="docs/screenshots/mode-select.png" alt="Mode select" width="48%" />
+  &nbsp;
+  <img src="docs/screenshots/wallet-setup.png" alt="Wallet setup" width="48%" />
+</p>
+<p align="center"><em>Mode selection &nbsp;&nbsp;|&nbsp;&nbsp; Wallet setup</em></p>
 
 ### Strategy Versioning ("Git for Agents")
 
@@ -45,8 +54,12 @@ AlphaOracle treats agent strategies like code:
 - **Rollback** — revert the live agent to any previous strategy version
 - **Diff** — compare two strategy versions side-by-side in the dashboard
 
-<!-- SCREENSHOT: Strategy versions panel with the Compare/diff view open -->
-<!-- ![Strategy versioning](docs/screenshots/strategy-versions.png) -->
+<p align="center">
+  <img src="docs/screenshots/strategy-versions.png" alt="Strategy versioning" height="600px" />
+  &nbsp;
+  <img src="docs/screenshots/strategy-config.png" alt="Strategy config" height="600px" />
+</p>
+<p align="center"><em>Strategy version history &nbsp;&nbsp;|&nbsp;&nbsp; Strategy config editor</em></p>
 
 ## Architecture
 
